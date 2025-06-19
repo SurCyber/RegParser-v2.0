@@ -3,6 +3,8 @@ from tkinter import filedialog, scrolledtext, ttk, messagebox
 import os
 import csv
 import sys
+import zipfile
+import shutil
 import subprocess
 from threading import Thread
 from Registry import Registry
@@ -30,6 +32,10 @@ class ForensicParserApp:
         self.output_folder_var = tk.StringVar()
         self.cancel_flag = False
         self.logo_path_var = tk.StringVar()
+        self.temp_zip_dir = None
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+
         
         # Configuration for case information
         self.case_info = {
@@ -59,6 +65,8 @@ class ForensicParserApp:
         )
         if logo_path:
             self.case_info['logo_path'].set(logo_path)
+
+
     def create_menu(self):
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
@@ -121,6 +129,7 @@ class ForensicParserApp:
         tk.Button(reg_buttons, text="Scan for Hives", command=self.scan_hives, bg="#4CAF50", fg="white").pack(side='left', padx=2)
         tk.Button(reg_buttons, text="Select All", command=self.select_all_hives, bg="#607D8B", fg="white").pack(side='left', padx=2)
         tk.Button(reg_buttons, text="Clear Selection", command=self.clear_hive_selection, bg="#607D8B", fg="white").pack(side='left', padx=2)
+        tk.Button(reg_buttons, text="Load from ZIP", command=self.load_zip_and_scan, bg="#03A9F4", fg="white").pack(side='left', padx=2)
         
         # Hives listbox with scrollbar
         hives_frame = tk.Frame(reg_frame, bg="#f0f0f0")
@@ -129,7 +138,7 @@ class ForensicParserApp:
         self.hives_listbox = tk.Listbox(hives_frame, selectmode=tk.MULTIPLE, width=100, height=8)
         hives_scrollbar = ttk.Scrollbar(hives_frame, orient="vertical", style="Vertical.TScrollbar")
         style = ttk.Style()
-        style.theme_use('default')  # Optional: you can try 'clam', 'alt', etc.
+        style.theme_use('default')
         style.configure("Vertical.TScrollbar", width=20)  # Adjust width here
 
         self.hives_listbox.config(yscrollcommand=hives_scrollbar.set)
@@ -175,7 +184,8 @@ class ForensicParserApp:
         
         tk.Button(control_buttons, text="Cancel", bg="#f44336", fg="white", command=self.cancel_parsing).pack(side='left', padx=5)
         tk.Button(control_buttons, text="Clear Log", bg="#9E9E9E", fg="white", command=self.clear_log).pack(side='left', padx=5)
-        tk.Button(control_buttons, text="Exit", bg="black", fg="white", command=self.root.quit).pack(side='left', padx=5)
+        tk.Button(control_buttons, text="Exit", bg="black", fg="white", command=self.on_close).pack(side='left', padx=5)
+
 
         self.root.grid_columnconfigure((0,1), weight=1)
         self.root.grid_rowconfigure((1,2), weight=1)
@@ -543,8 +553,30 @@ class ForensicParserApp:
             f.write(html_content)
 
     def browse_reg_folder(self): self.reg_folder_var.set(filedialog.askdirectory() or "")
-    def browse_jump_folder(self): self.jump_folder_var.set(filedialog.askdirectory() or "")
-    def browse_prefetch_folder(self): self.prefetch_folder_var.set(filedialog.askdirectory() or "")
+    def browse_jump_folder(self):
+        start_dir = ""
+        if self.temp_zip_dir:
+            potential = os.path.join(self.temp_zip_dir)
+            if os.path.exists(potential):
+                start_dir = potential
+
+        selected = filedialog.askdirectory(title="Select JumpLists folder", initialdir=start_dir or None)
+        if selected:
+            self.jump_folder_var.set(selected)
+
+
+    def browse_prefetch_folder(self):
+        start_dir = ""
+        if self.temp_zip_dir:
+            potential = os.path.join(self.temp_zip_dir)
+            if os.path.exists(potential):
+                start_dir = potential
+
+        selected = filedialog.askdirectory(title="Select Prefetch folder", initialdir=start_dir or None)
+        if selected:
+            self.prefetch_folder_var.set(selected)
+
+
     def browse_output_folder(self): self.output_folder_var.set(filedialog.askdirectory() or "")
 
     def cancel_parsing(self):
@@ -951,7 +983,46 @@ class ForensicParserApp:
 
         self.status_var.set("Network profile parsing complete.")
 
+    def load_zip_and_scan(self):
+        zip_path = filedialog.askopenfilename(title="Select ZIP File", filetypes=[("ZIP files", "*.zip")])
+        if not zip_path:
+            return
 
+        try:
+            self.log(f"📦 Extracting ZIP file: {zip_path}")
+
+            # Create timestamped folder in current directory
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.temp_zip_dir = os.path.join(os.getcwd(), f"zip_extract_{timestamp}")
+            os.makedirs(self.temp_zip_dir, exist_ok=True)
+
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(self.temp_zip_dir)
+
+            self.log("📂 ZIP extracted successfully.")
+            self.log(f"📁 Extraction path: {self.temp_zip_dir}")
+            self.log("📡 Now scanning hives from extracted content...")
+
+            self.reg_folder_var.set(self.temp_zip_dir)
+            self.scan_hives()
+
+        except Exception as e:
+            self.log(f"❌ Failed to extract ZIP: {e}")
+
+
+    def cleanup_temp_zip(self):
+        if self.temp_zip_dir and os.path.exists(self.temp_zip_dir):
+            try:
+                shutil.rmtree(self.temp_zip_dir)
+                self.log(f"🧹 Auto-deleted temp ZIP folder: {self.temp_zip_dir}")
+            except Exception as e:
+                self.log(f"⚠️ Failed to delete temp folder: {e}")
+
+    def on_close(self):
+        self.cleanup_temp_zip()
+        self.root.destroy()
+            
+        
 
 
     def scan_hives(self):
