@@ -475,13 +475,13 @@ class ForensicParserApp:
                     <tr>
                         <td>Jump Lists</td>
                         <td class="path-cell">{self.jump_folder_var.get() or 'Not specified'}</td>
-                        <td class="{'status-complete' if self.jump_folder_var.get() else 'status-missing'}">{'Ready for processing' if self.jump_folder_var.get() else 'Not configured'}</td>
+                        <td class="{'status-complete' if self.jump_folder_var.get() else 'status-missing'}">{'Parsed successfully' if self.jump_folder_var.get() else 'Not configured'}</td>
                         <td class="path-cell">{os.path.join(self.output_folder_var.get(), 'JumpLists') if self.output_folder_var.get() else 'Not set'}</td>
                     </tr>
                     <tr>
                         <td>Prefetch Files</td>
                         <td class="path-cell">{self.prefetch_folder_var.get() or 'Not specified'}</td>
-                        <td class="{'status-complete' if self.prefetch_folder_var.get() else 'status-missing'}">{'Ready for processing' if self.prefetch_folder_var.get() else 'Not configured'}</td>
+                        <td class="{'status-complete' if self.prefetch_folder_var.get() else 'status-missing'}">{'Parsed successfully' if self.prefetch_folder_var.get() else 'Not configured'}</td>
                         <td class="path-cell">{os.path.join(self.output_folder_var.get(), 'Prefetch') if self.output_folder_var.get() else 'Not set'}</td>
                     </tr>
                     <tr>
