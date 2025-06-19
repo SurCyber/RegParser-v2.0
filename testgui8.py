@@ -127,7 +127,11 @@ class ForensicParserApp:
         hives_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
         self.hives_listbox = tk.Listbox(hives_frame, selectmode=tk.MULTIPLE, width=100, height=8)
-        hives_scrollbar = tk.Scrollbar(hives_frame, orient="vertical")
+        hives_scrollbar = ttk.Scrollbar(hives_frame, orient="vertical", style="Vertical.TScrollbar")
+        style = ttk.Style()
+        style.theme_use('default')  # Optional: you can try 'clam', 'alt', etc.
+        style.configure("Vertical.TScrollbar", width=20)  # Adjust width here
+
         self.hives_listbox.config(yscrollcommand=hives_scrollbar.set)
         hives_scrollbar.config(command=self.hives_listbox.yview)
         
@@ -988,6 +992,7 @@ class ForensicParserApp:
         self.log(f"✅ Found {hive_count} potential registry hives.")
         if hive_count > 0:
             self.log("💡 Tip: Select specific hives or use 'Select All' button.")
+        self.log(f"🧾 Total hive entries: {self.hives_listbox.size()}")
 
 
 def parse_registry_hive(hive_path, output_csv):
