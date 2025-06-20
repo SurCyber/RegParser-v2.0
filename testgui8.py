@@ -6,6 +6,9 @@ import sys
 import zipfile
 import shutil
 import subprocess
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 from threading import Thread
 from Registry import Registry
 import datetime
@@ -379,16 +382,45 @@ class ForensicParserApp:
         if not self.output_folder_var.get():
             messagebox.showwarning("Export Report", "Please set an output folder first.")
             return
-        
-        report_path = os.path.join(self.output_folder_var.get(), "forensic_analysis_report.html")
-        
-        try:
-            self.generate_html_report(report_path)
-            self.log(f"✅ Report exported to {report_path}")
-            messagebox.showinfo("Report Export", f"Report exported successfully to:\n{report_path}")
-        except Exception as e:
-            self.log(f"❌ Failed to export report: {e}")
-            messagebox.showerror("Export Error", f"Failed to export report: {e}")
+
+        # Create a pop-up window
+        export_window = tk.Toplevel(self.root)
+        export_window.title("Select Export Format")
+        export_window.geometry("300x160")
+        export_window.resizable(False, False)
+
+        html_var = tk.BooleanVar(value=True)
+        pdf_var = tk.BooleanVar(value=True)
+
+        tk.Label(export_window, text="Choose report format:", font=("Helvetica", 12)).pack(pady=10)
+        tk.Checkbutton(export_window, text="Export as HTML", variable=html_var).pack(anchor='w', padx=20)
+        tk.Checkbutton(export_window, text="Export as PDF", variable=pdf_var).pack(anchor='w', padx=20)
+
+        def perform_export():
+            base_path = os.path.join(self.output_folder_var.get(), "forensic_analysis_report")
+            try:
+                if html_var.get():
+                    self.generate_html_report(base_path + ".html")
+                if pdf_var.get():
+                    self.generate_pdf_report(base_path + ".pdf")
+
+                formats = []
+                if html_var.get(): formats.append("HTML")
+                if pdf_var.get(): formats.append("PDF")
+                if formats:
+                    self.log(f"✅ Report exported as: {', '.join(formats)}")
+                    messagebox.showinfo("Export Success", f"Exported report as: {', '.join(formats)}")
+                else:
+                    self.log("⚠️ No format selected for export.")
+                    messagebox.showwarning("No Format", "No format selected.")
+
+            except Exception as e:
+                self.log(f"❌ Failed to export report: {e}")
+                messagebox.showerror("Export Error", f"Failed to export report:\n{e}")
+            export_window.destroy()
+
+        tk.Button(export_window, text="Export", command=perform_export, bg="#4CAF50", fg="white").pack(pady=10)
+
     
     def generate_html_report(self, output_path):
         output_dir = os.path.dirname(output_path)
@@ -551,6 +583,127 @@ class ForensicParserApp:
     
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
+
+    def generate_pdf_report(self, output_path):
+        output_dir = os.path.dirname(output_path)
+        summary = self.get_analysis_summary()
+        logo_filename = self.copy_logo_to_output(self.case_info['logo_path'].get(), output_dir)
+        app_logo_filename = self.copy_app_logo_to_output(output_dir)
+
+        pdf = canvas.Canvas(output_path, pagesize=A4)
+        width, height = A4
+        y = height - 40
+
+        pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawString(40, y, "Forensic Analysis Report")
+        y -= 25
+
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(40, y, f"Organization: {self.case_info['organization'].get()}")
+        y -= 15
+        pdf.drawString(40, y, f"Case Name: {self.case_info['case_name'].get()}")
+        y -= 15
+        pdf.drawString(40, y, f"Examiner: {self.case_info['examiner'].get()}")
+        y -= 15
+        pdf.drawString(40, y, f"Date: {self.case_info['date'].get()}")
+        y -= 30
+
+        if logo_filename:
+            try:
+                logo_path = os.path.join(output_dir, logo_filename)
+                # Draw org logo at top-right corner
+                pdf.drawImage(logo_path, width - 100, 400, width=70, preserveAspectRatio=True, mask='auto')
+            except Exception as e:
+                self.log(f"⚠️ Failed to draw organization logo: {e}")
+
+        # Executive Summary
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(40, y, "Executive Summary")
+        y -= 18
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(40, y, "This report contains the results of forensic analysis on various artifacts.")
+        y -= 30
+
+        # Summary
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(40, y, "Processed Artifacts:")
+        y -= 18
+        pdf.setFont("Helvetica", 10)
+
+        for folder in summary['output_folders']:
+            if y < 60:
+                pdf.showPage()
+                y = height - 40
+                pdf.setFont("Helvetica", 10)
+            pdf.drawString(50, y, f"- {folder['name']}: {folder['file_count']} files")
+            y -= 15
+
+        y -= 10
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(40, y, "Evidence Sources:")
+        y -= 20
+        pdf.setFont("Helvetica", 10)
+
+        def draw_source(label, input_path, output_folder):
+            nonlocal y
+            if y < 60:
+                pdf.showPage()
+                y = height - 40
+                pdf.setFont("Helvetica", 10)
+
+            # Check if the tool has run (folder created and has files)
+            if os.path.exists(output_folder) and os.listdir(output_folder):
+                pdf.drawString(50, y, f"{label}:")
+                y -= 15
+                pdf.drawString(70, y, f"Input Path: {input_path or 'Not set'}")
+                y -= 15
+                pdf.drawString(70, y, f"Output Folder: {output_folder}")
+                y -= 20
+            else:
+                pdf.drawString(50, y, f"{label}: Not parsed")
+                y -= 20
+
+        draw_source("Registry Hives", self.reg_folder_var.get(), os.path.join(self.output_folder_var.get(), 'Registry'))
+        draw_source("Jump Lists", self.jump_folder_var.get(), os.path.join(self.output_folder_var.get(), 'JumpLists'))
+        draw_source("Prefetch", self.prefetch_folder_var.get(), os.path.join(self.output_folder_var.get(), 'Prefetch'))
+        draw_source("USB Devices", self.reg_folder_var.get(), os.path.join(self.output_folder_var.get(), 'USB_Devices'))
+        draw_source("Shellbags", self.reg_folder_var.get(), os.path.join(self.output_folder_var.get(), 'Shellbags'))
+        draw_source("Bluetooth Devices", self.reg_folder_var.get(), os.path.join(self.output_folder_var.get(), 'Bluetooth_Devices'))
+        draw_source("Network Profiles", self.reg_folder_var.get(), os.path.join(self.output_folder_var.get(), 'Network_Connections'))
+
+        y -= 10
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(40, y, "Tool Info:")
+        y -= 15
+        pdf.setFont("Helvetica", 10)
+        tools = [
+            "Registry Analysis: Internal Python Parser",
+            "Jump Lists: JLECmd.exe",
+            "Shellbags: SBECmd.exe",
+            "Prefetch: PECmd.exe",
+            "Report Generation: RegParser v2.0"
+        ]
+        for tool in tools:
+            pdf.drawString(50, y, f"- {tool}")
+            y -= 15
+
+        y -= 10
+        pdf.setFont("Helvetica-Oblique", 8)
+        pdf.drawString(40, y, "Generated by RegParser v2.0 developed by Soukarya Sur")
+        y -= 10
+        pdf.drawString(40, y, f"LinkedIn: linkedin.com/in/soukarya-sur-096589256")
+        y -= 10
+        pdf.drawString(40, y, f"For queries contact: {self.case_info['examiner'].get() or 'N/A'}")
+
+        if app_logo_filename:
+            try:
+                app_logo_path = os.path.join(output_dir, app_logo_filename)
+                # Draw app logo at bottom-right corner (leave margin)
+                pdf.drawImage(app_logo_path, width - 100, 20, width=70, preserveAspectRatio=True, mask='auto')
+            except Exception as e:
+                self.log(f"⚠️ Failed to draw app logo: {e}")
+
+        pdf.save()
 
     def browse_reg_folder(self): self.reg_folder_var.set(filedialog.askdirectory() or "")
     def browse_jump_folder(self):
@@ -984,30 +1137,67 @@ class ForensicParserApp:
         self.status_var.set("Network profile parsing complete.")
 
     def load_zip_and_scan(self):
-        zip_path = filedialog.askopenfilename(title="Select ZIP File", filetypes=[("ZIP files", "*.zip")])
+        zip_path = filedialog.askopenfilename(
+            title="Select ZIP File",
+            filetypes=[("ZIP files", "*.zip")]
+        )
         if not zip_path:
             return
 
-        try:
-            self.log(f"📦 Extracting ZIP file: {zip_path}")
+        # Default base path = current working directory
+        default_base_path = os.getcwd()
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        default_extract_path = os.path.join(default_base_path, f"zip_extract_{timestamp}")
 
-            # Create timestamped folder in current directory
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.temp_zip_dir = os.path.join(os.getcwd(), f"zip_extract_{timestamp}")
-            os.makedirs(self.temp_zip_dir, exist_ok=True)
+        # Create a pop-up dialog to let the user view/change the base path
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Select Extraction Location")
+        dialog.geometry("500x160")
+        dialog.resizable(False, False)
 
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(self.temp_zip_dir)
+        tk.Label(dialog, text="Base Folder for Extraction:", font=("Helvetica", 10)).pack(pady=(10, 0))
 
-            self.log("📂 ZIP extracted successfully.")
-            self.log(f"📁 Extraction path: {self.temp_zip_dir}")
-            self.log("📡 Now scanning hives from extracted content...")
+        base_path_var = tk.StringVar(value=default_base_path)
 
-            self.reg_folder_var.set(self.temp_zip_dir)
-            self.scan_hives()
+        entry = tk.Entry(dialog, textvariable=base_path_var, width=60)
+        entry.pack(pady=5)
 
-        except Exception as e:
-            self.log(f"❌ Failed to extract ZIP: {e}")
+        def browse_folder():
+            selected = filedialog.askdirectory(title="Select Folder")
+            if selected:
+                base_path_var.set(selected)
+
+        tk.Button(dialog, text="Browse", command=browse_folder).pack()
+
+        def confirm_path():
+            base_path = base_path_var.get().strip()
+            if not base_path or not os.path.exists(base_path):
+                messagebox.showerror("Invalid Path", "Please select a valid folder.")
+                return
+
+            dialog.destroy()
+            subfolder_name = f"zip_extract_{timestamp}"
+            self.temp_zip_dir = os.path.join(base_path, subfolder_name)
+
+            try:
+                os.makedirs(self.temp_zip_dir, exist_ok=True)
+                self.log(f"📦 Extracting ZIP file: {zip_path}")
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(self.temp_zip_dir)
+
+                self.log("📂 ZIP extracted successfully.")
+                self.log(f"📁 Extraction path: {self.temp_zip_dir}")
+                self.log("📡 Now scanning hives from extracted content...")
+
+                self.reg_folder_var.set(self.temp_zip_dir)
+                self.scan_hives()
+
+            except Exception as e:
+                self.log(f"❌ Failed to extract ZIP: {e}")
+
+        tk.Button(dialog, text="Extract", command=confirm_path, bg="#4CAF50", fg="white").pack(pady=10)
+
+
 
 
     def cleanup_temp_zip(self):
@@ -1019,8 +1209,17 @@ class ForensicParserApp:
                 self.log(f"⚠️ Failed to delete temp folder: {e}")
 
     def on_close(self):
-        self.cleanup_temp_zip()
+        if self.temp_zip_dir and os.path.exists(self.temp_zip_dir):
+            answer = messagebox.askyesno(
+                "Save Extracted Files?",
+                "Do you want to keep the extracted ZIP folder?\n\nIf you click No, it will be permanently deleted."
+            )
+            if not answer:
+                self.cleanup_temp_zip()
+            else:
+                self.log(f"📁 Extracted folder kept: {self.temp_zip_dir}")
         self.root.destroy()
+
             
         
 
