@@ -262,7 +262,6 @@ class ForensicParserApp:
             'output_folder': self.output_folder_var.get(),
             'case_name': self.case_info['case_name'].get(),
             'examiner': self.case_info['examiner'].get(),
-            'date': self.case_info['date'].get(),
             'organization': self.case_info['organization'].get(),
             'logo_path': self.case_info['logo_path'].get()
         }
@@ -296,7 +295,6 @@ class ForensicParserApp:
                 self.output_folder_var.set(config.get('output_folder', ''))
                 self.case_info['case_name'].set(config.get('case_name', ''))
                 self.case_info['examiner'].set(config.get('examiner', ''))
-                self.case_info['date'].set(config.get('date', ''))
                 self.case_info['organization'].set(config.get('organization', ''))
                 self.case_info['logo_path'].set(config.get('logo_path', ''))
             
